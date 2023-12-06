@@ -127,8 +127,7 @@ def upload_image(image_file, history, text_input, chat_state, image_list):
         else:
             chat_state = ''
     image = read_img(image_file.name)
-    if not isinstance(image_list, list) or (
-            isinstance(image_list, list) and len(image_list) == 0):
+    if not isinstance(image_list, list) or len(image_list) == 0:
         image_list = []
         image_list.append(image)
     else:

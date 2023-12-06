@@ -30,12 +30,9 @@ if __name__ == '__main__':
         with open(file_name) as fin:
             json_data = json.load(fin)
             type = json_data["type"]
-            for line in json_data["instances"]:
-                outputs_list.append(line["text"])
-                
-
+            outputs_list.extend(line["text"] for line in json_data["instances"])
     if Path(outputfile).exists() and not args.overwrite:
-        logging.warning(f"File %s exists, will not overwrite.", outputfile)
+        logging.warning("File %s exists, will not overwrite.", outputfile)
     else:
         with open(outputfile, "w") as f:
             for line in outputs_list:

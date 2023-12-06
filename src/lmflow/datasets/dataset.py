@@ -69,7 +69,11 @@ class Dataset:
         if data_args.dataset_path is None:
             return
 
-        if backend == "huggingface":
+        if backend == "custom_multi_modal":
+            # FIXME refactor the backend name
+            raw_dataset = CustomMultiModalDataset(self.dataset_path, data_args)
+            self.backend_dataset = raw_dataset
+        elif backend == "huggingface":
             data_files = [
                 x.absolute().as_posix()
                  for x in Path(self.dataset_path).glob("*.json")
@@ -110,14 +114,7 @@ class Dataset:
             )
             self.backend_dataset = raw_dataset
             self._check_data_format()
-        elif backend == "json":
-            # TODO (@Jiachun)
-            pass
-        elif backend == "custom_multi_modal":
-            # FIXME refactor the backend name
-            raw_dataset = CustomMultiModalDataset(self.dataset_path, data_args)
-            self.backend_dataset = raw_dataset
-        else:
+        elif backend != "json":
             raise NotImplementedError(f'Unsupported dataset backend "{backend}"')
 
     def __len__(self):
@@ -206,7 +203,7 @@ class Dataset:
                 )
 
             self.type = dict_obj[KEY_TYPE]
-            if not self.type in INSTANCE_FIELDS_MAP:
+            if self.type not in INSTANCE_FIELDS_MAP:
                 raise ValueError(f'type "{self.type}" is not supported')
 
             correct_fields = INSTANCE_FIELDS_MAP[self.type]
@@ -289,8 +286,7 @@ class Dataset:
         A python dict object represents the content of this dataset.
         """
         if self.backend == "huggingface":
-            dict_obj = {}
-            dict_obj[KEY_TYPE] = self.get_type()
+            dict_obj = {KEY_TYPE: self.get_type()}
             hf_dict = self.backend_dataset.to_dict()
             dict_obj[KEY_INSTANCES] = []
 
@@ -310,8 +306,7 @@ class Dataset:
 
             return dict_obj
         elif self.backend == "dict":
-            dict_obj = self.backend_dataset
-            return dict_obj
+            return self.backend_dataset
         else:
             raise NotImplementedError(
                 f'Current .to_dict is not supported for backend "{backend}"'
@@ -321,13 +316,12 @@ class Dataset:
     def to_list(self):
         """Returns a list of instances."""
         if self.backend == "huggingface":
-            instance_list = [self.backend_dataset.__getitem__(idx)
-                             for idx in range(len(self.backend_dataset))]
-            return instance_list
+            return [
+                self.backend_dataset.__getitem__(idx)
+                for idx in range(len(self.backend_dataset))
+            ]
         elif self.backend == "dict":
-            instance_list = copy.deepcopy(self.backend_dataset[KEY_INSTANCES])
-            # TODO: should be a list of instances, instance should be huggingface datasets row format
-            return instance_list
+            return copy.deepcopy(self.backend_dataset[KEY_INSTANCES])
         else:
             raise NotImplementedError(
                 f'Current .to_list is not supported for backend "{backend}"'

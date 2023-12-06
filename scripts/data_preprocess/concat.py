@@ -42,32 +42,28 @@ def parse_argument(sys_argv):
         )
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():
     args = parse_argument(sys.argv)
 
-    if args.merge_from_path is not None:
-        for i in range(0, len(args.merge_from_path)):
-            with open(args.merge_from_path[i], "r") as fin:
-                extra_data_dict = json.load(fin)
-            if i == 0:
-                data_dict = extra_data_dict
-            else:
-                if data_dict["type"] != extra_data_dict["type"]:
-                    raise ValueError(
-                        'two dataset have different types:'
-                        f' input dataset: "{data_dict["type"]}";'
-                        f' merge from dataset: "{extra_data_dict["type"]}"'
-                    )
-                data_dict["instances"].extend(extra_data_dict["instances"])
-    else:
+    if args.merge_from_path is None:
         raise ValueError("No merge files specified")
 
+    for i in range(0, len(args.merge_from_path)):
+        with open(args.merge_from_path[i], "r") as fin:
+            extra_data_dict = json.load(fin)
+        if i == 0:
+            data_dict = extra_data_dict
+        elif data_dict["type"] == extra_data_dict["type"]:
+            data_dict["instances"].extend(extra_data_dict["instances"])
+        else:
+            raise ValueError(
+                'two dataset have different types:'
+                f' input dataset: "{data_dict["type"]}";'
+                f' merge from dataset: "{extra_data_dict["type"]}"'
+            )
     if args.output_path is not None:
         with open(args.output_path, "w") as fout:
             json.dump(data_dict, fout, indent=4, ensure_ascii=False)

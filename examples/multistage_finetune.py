@@ -148,10 +148,8 @@ def main():
 
             # Initialization for each sub-finetune
             model = AutoModel.get_model(model_args)
-            finetuner_args.output_dir = (
-                output_dir + f"_epoch-{epoch}_stage-{stage}"
-            )
-            finetuner_args.run_name = run_name + f"_epoch-{epoch}_stage-{stage}"
+            finetuner_args.output_dir = f"{output_dir}_epoch-{epoch}_stage-{stage}"
+            finetuner_args.run_name = f"{run_name}_epoch-{epoch}_stage-{stage}"
 
             finetuner = AutoPipeline.get_pipeline(
                 pipeline_name=pipeline_name,

@@ -67,21 +67,17 @@ def stream_generate(inputs,context_len = 1024, max_new_tokens=128, end_string="#
     flag_stop = False
     for i in range(0, max_new_tokens):
         with accelerator.autocast():
-            if i == 0:
-                with torch.no_grad():
+            with torch.no_grad():
+                if i == 0:
                     out = model.backend_model(torch.as_tensor([input_ids], device=local_rank), use_cache=True)
-                logits = out.logits    
-                past_key_values = out.past_key_values
-            else:
-                with torch.no_grad():
+                else:
                     out = model.backend_model(
                         input_ids=torch.as_tensor([[token]], device=local_rank),
                         use_cache=True,
                         past_key_values=past_key_values,
-                    )         
-                logits = out.logits
-                past_key_values = out.past_key_values
-
+                    )
+            past_key_values = out.past_key_values
+            logits = out.logits
         last_token_logits = logits[0, -1, :]
         token = int(torch.argmax(last_token_logits))
         output_ids.append(token)
@@ -105,22 +101,26 @@ def stream_generate(inputs,context_len = 1024, max_new_tokens=128, end_string="#
 
 @app.route('/predict',methods = ['POST'])
 def predict():
-    if(request.method == "POST"):
+    if (request.method == "POST"):
         try:
             user_input = request.get_json()["Input"]
             conversation = request.get_json()["History"]
 
             history_input = ""
-            if(len(conversation) >= 2):
-                if(len(conversation) == 2):
-                    history_input ="###Human: " + user_input +" "
+            if (len(conversation) >= 2):
+                if (len(conversation) == 2):
+                    history_input = f"###Human: {user_input} "
                 else:
                     for i in range(0, len(conversation)-1):
-                        if(i % 2 == 0):
-                            history_input = history_input + "###Human: "  + conversation[i+1]["content"] + " "
-                        elif(i % 2 == 1):
-                            history_input = history_input + "###Assistant:"  + conversation[i+1]["content"] 
-                history_input = history_input +  "###Assistant:"
+                        if (i % 2 == 0):
+                            history_input = (
+                                f"{history_input}###Human: "
+                                + conversation[i + 1]["content"]
+                                + " "
+                            )
+                        elif (i % 2 == 1):
+                            history_input = f"{history_input}###Assistant:" + conversation[i+1]["content"]
+                history_input = f"{history_input}###Assistant:"
 
             if len(model.encode(history_input))> WINDOW_LENGTH:
                 inputs = model.encode(history_input)

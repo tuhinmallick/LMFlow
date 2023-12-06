@@ -53,5 +53,3 @@ class TextRegressionModel(RegressionModel):
         """
         if self.inference_func is not None:
             return self.inference_func(inputs)
-        else:
-            pass

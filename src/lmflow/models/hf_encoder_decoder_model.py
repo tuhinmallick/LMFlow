@@ -118,7 +118,7 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
         elif tune_strategy == 'none':
             if use_accelerator:
                 raise NotImplementedError(
-                    f"Currently encoder2decoder model is not supported with accelerator"
+                    "Currently encoder2decoder model is not supported with accelerator"
                 )
             # dschf = HfDeepSpeedConfig(ds_config)
             dschf = HfTrainerDeepSpeedConfig(ds_config)
@@ -136,52 +136,20 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
             # get model register
             self.arch_type = model_args.arch_type
             if self.arch_type == "encoder_decoder":
-                if model_args.model_name_or_path == 'THUDM/chatglm-6b':
-                    model_register = AutoModel
-                else:
-                    model_register = AutoModelForSeq2SeqLM
+                model_register = (
+                    AutoModel
+                    if model_args.model_name_or_path == 'THUDM/chatglm-6b'
+                    else AutoModelForSeq2SeqLM
+                )
             elif self.arch_type == "vision_encoder_decoder":
-                if not custom_model:
-                    model_register = AutoModelForVision2Seq
-                else:
-                    model_register = CustomAutoVision2SeqModel
+                model_register = (
+                    AutoModelForVision2Seq
+                    if not custom_model
+                    else CustomAutoVision2SeqModel
+                )
             else:
                 raise NotImplementedError
-            if not custom_model:
-                if model_args.model_name_or_path == 'THUDM/chatglm-6b':
-                    self.backend_model = model_register.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
-
-                elif model_args.use_ram_optimized_load and peft_model_id is None:
-                    try:
-                        # RAM-optimized load
-                        self.backend_model = model_register.from_pretrained(
-                            model_args.model_name_or_path,
-                            device_map="auto",
-                            offload_folder="offload",
-                            offload_state_dict=True,
-                        )
-                    except:
-                        logger.warning(
-                            "Failed to use RAM optimized load. Automatically"
-                            " use original load instead."
-                        )
-                        # Normal load
-                        self.backend_model = model_register.from_pretrained(
-                            model_args.model_name_or_path,
-                        )
-                else:
-                    if peft_model_id is not None:
-                        logger.warning(
-                            "LoRA does not support RAM optimized load currently."
-                            " Automatically use original load instead."
-                        )
-                    self.backend_model = model_register.from_pretrained(
-                        model_args.model_name_or_path,
-                    )
-            # else:
-            #     self.backend_model = model_register.from_pretrained(
-            #         model_args.model_name_or_path)
-            else:
+            if custom_model:
                 if model_args.llava_loading is False:
                     # FIXME remove the following from_pretrained code by
                     # creating a unified pretrained model.
@@ -198,15 +166,15 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
                 else:
                     config = AutoConfig.from_pretrained(
                         model_args.model_name_or_path)
-                    if model_args.low_resource:
-                        kwargs = dict(
+                    kwargs = (
+                        dict(
                             torch_dtype=torch.float16,
                             load_in_8bit=True,
                             device_map="auto",
                         )
-                    else:
-                        # kwargs = dict(torch_dtype=torch.float16)
-                        kwargs = dict(device_map="auto")
+                        if model_args.low_resource
+                        else dict(device_map="auto")
+                    )
                     if (model_args.image_encoder_name_or_path is None and
                         model_args.qformer_name_or_path is None and
                         model_args.llm_model_name_or_path is None):
@@ -225,11 +193,14 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
                         if model_args.pretrained_language_projection_path is not None:
                             state_dict = torch.load(
                                 model_args.pretrained_language_projection_path, map_location="cpu")
-                            new_state_dict = {}
-                            new_state_dict['model.language_projection.weight'] = \
-                                state_dict['model.mm_projector.weight']
-                            new_state_dict['model.language_projection.bias'] = \
-                                state_dict['model.mm_projector.bias']
+                            new_state_dict = {
+                                'model.language_projection.weight': state_dict[
+                                    'model.mm_projector.weight'
+                                ],
+                                'model.language_projection.bias': state_dict[
+                                    'model.mm_projector.bias'
+                                ],
+                            }
                 if model_args.llava_pretrain_model_path is not None:
                     # used for inference that directly load the preatrain model
                     model = load_llava_pretrain_model(
@@ -238,6 +209,36 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
                         model.save_pretrained(
                             model_args.save_pretrain_model_path)
                 self.backend_model = model
+            elif model_args.model_name_or_path == 'THUDM/chatglm-6b':
+                self.backend_model = model_register.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
+
+            elif model_args.use_ram_optimized_load and peft_model_id is None:
+                try:
+                    # RAM-optimized load
+                    self.backend_model = model_register.from_pretrained(
+                        model_args.model_name_or_path,
+                        device_map="auto",
+                        offload_folder="offload",
+                        offload_state_dict=True,
+                    )
+                except:
+                    logger.warning(
+                        "Failed to use RAM optimized load. Automatically"
+                        " use original load instead."
+                    )
+                    # Normal load
+                    self.backend_model = model_register.from_pretrained(
+                        model_args.model_name_or_path,
+                    )
+            else:
+                if peft_model_id is not None:
+                    logger.warning(
+                        "LoRA does not support RAM optimized load currently."
+                        " Automatically use original load instead."
+                    )
+                self.backend_model = model_register.from_pretrained(
+                    model_args.model_name_or_path,
+                )
             # init tokenizer
             if self.arch_type == "encoder_decoder":
                 self.tokenizer = AutoTokenizer.from_pretrained(
@@ -339,18 +340,17 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
             kwargs.update(input)
             if "images" not in input:
                 tokens = self.tokenizer(*args, **kwargs)
+            elif getattr(self.tokenizer, "image_processor", None) is not None:
+                tokens = self.tokenizer(*args, **kwargs)
+            elif getattr(self, "image_processor", None) is not None:
+                images = kwargs.pop("images")
+                tokens = self.tokenizer(*args, **kwargs)
+                images = self.image_processor.preprocess(
+                    images, return_tensors='pt')['pixel_values'][0]
+                tokens['pixel_values'] = images
             else:
-                if getattr(self.tokenizer, "image_processor", None) is not None:
-                    tokens = self.tokenizer(*args, **kwargs)
-                elif getattr(self, "image_processor", None) is not None:
-                    images = kwargs.pop("images")
-                    tokens = self.tokenizer(*args, **kwargs)
-                    images = self.image_processor.preprocess(
-                        images, return_tensors='pt')['pixel_values'][0]
-                    tokens['pixel_values'] = images
-                else:
-                    print("Can not find the image processor")
-                    raise NotImplementedError
+                print("Can not find the image processor")
+                raise NotImplementedError
             return tokens
         elif isinstance(input, list):
             return self.tokenizer(text=input, *args, **kwargs)#batch encode,will automatically do left padding
@@ -426,27 +426,22 @@ class HFEncoderDecoderModel(EncoderDecoderModel, Tunable):
         # print(f"{current_time}: model.inference: kwargs update end", flush=True)
 
         with torch.no_grad():
-            if self.device == "gpu":
-                if getattr(self, "ds_engine", None) is not None:
-                    outputs = self.ds_engine.module.generate(
-                        input_ids=inputs,
-                        synced_gpus=True,
-                        *args,
-                        **kwargs
-                    )
-                else:
-                    outputs = self.backend_model.generate(
-                        input_ids=inputs,
-                        synced_gpus=True,
-                        *args,
-                        **kwargs,
-                    )
-            elif self.device == "cpu":
-                outputs = self.backend_model.generate(
+            if (
+                self.device == "gpu"
+                and getattr(self, "ds_engine", None) is not None
+            ):
+                outputs = self.ds_engine.module.generate(
                     input_ids=inputs,
                     synced_gpus=True,
                     *args,
                     **kwargs
+                )
+            elif self.device in ["gpu", "cpu"]:
+                outputs = self.backend_model.generate(
+                    input_ids=inputs,
+                    synced_gpus=True,
+                    *args,
+                    **kwargs,
                 )
             else:
                 raise NotImplementedError(

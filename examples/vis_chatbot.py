@@ -125,9 +125,7 @@ def main():
     # Chats
     model_name = model_args.model_name_or_path
     if model_args.llm_model_name_or_path is not None:
-        model_name = model_name + " with {}".format(
-            model_args.llm_model_name_or_path
-        )
+        model_name = f"{model_name} with {model_args.llm_model_name_or_path}"
     if model_args.lora_model_path is not None:
         model_name += f" + {model_args.lora_model_path}"
 
@@ -148,38 +146,36 @@ def main():
 
 
     end_string = chatbot_args.end_string
-    if chatbot_args.chatbot_type == "mini_gpt":
+    if chatbot_args.chatbot_type == "llava":
+        context = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
+        user_name = "USER"
+        sep = " "
+    elif chatbot_args.chatbot_type == "mini_gpt":
         context = "Give the following image: <Img>ImageContent</Img>. " + "You will be able to see the image once I provide it to you. Please answer my questions."
         user_name = "Human"
         sep = "###"
 
-    elif chatbot_args.chatbot_type == "llava":
-        context = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."
-        user_name = "USER"
-        sep = " "
     else:
         context = ""
         user_name = ""
         sep = "###"
     prompt_structure = chatbot_args.prompt_structure
 
-    # Load image and input text for reasoning
-    image_list = []
     if chatbot_args.image_path is not None:
         raw_image = Image.open(chatbot_args.image_path)
     else:
         img_url = 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/demo.jpg'
         raw_image = Image.open(requests.get(img_url, stream=True).raw).convert('RGB')
     base_size = raw_image.size
-    image_list.append(np.array(raw_image))
+    image_list = [np.array(raw_image)]
     input_text = chatbot_args.input_text
     if chatbot_args.task == "image_caption" and len(input_text) == 0:
         input_text = "a photography of"
-    if chatbot_args.chatbot_type == "mini_gpt":
-        context += sep + user_name + ": " + "<Img><ImageHere></Img> "
-    elif chatbot_args.chatbot_type == "llava":
+    if chatbot_args.chatbot_type == "llava":
         context += sep + user_name + ": " + "<image>\n"
 
+    elif chatbot_args.chatbot_type == "mini_gpt":
+        context += sep + user_name + ": " + "<Img><ImageHere></Img> "
     # this flag is for determining if we need to add the ###Human: prompt
     # if text after loading image, we add it when loading image
     # else, we add it when read the text.
@@ -200,7 +196,7 @@ def main():
         output = inferencer.inference(model, input_dataset)
         print(output.backend_dataset['text'])
     else:
-        # text, 1st image token, answer, text, 2nd image token, 
+        # text, 1st image token, answer, text, 2nd image token,
         while True:
             input_text = input("User >>> ")
             if input_text == "exit":
@@ -216,28 +212,28 @@ def main():
                     # batch of image with different shape
                     raw_image = raw_image.resize(base_size)
                     image_list.append(np.array(raw_image))
-                    if chatbot_args.chatbot_type == "mini_gpt":
-                        context += sep + user_name + ": " + "<Img><ImageHere></Img> "
-                    elif chatbot_args.chatbot_type == "llava":
+                    if chatbot_args.chatbot_type == "llava":
                         context += sep + user_name + ": " + "<image>\n"
+                    elif chatbot_args.chatbot_type == "mini_gpt":
+                        context += sep + user_name + ": " + "<Img><ImageHere></Img> "
                     else:
                         raise NotImplementedError
                     text_after_loading_image = True
-                    print("Finish loading image with path {}".format(image_path))
+                    print(f"Finish loading image with path {image_path}")
                     continue
                 except FileNotFoundError:
-                    print("Load image failed with path {}".format(image_path))
+                    print(f"Load image failed with path {image_path}")
                     continue
             elif input_text == "reset":
                 context = ""
                 print("Chat history cleared")
                 continue
-            
+
             if text_after_loading_image is False:
                 context += sep + user_name + ": "
             else:
                 text_after_loading_image = False
-            
+
             if not input_text:
                 input_text = " "
             context += prompt_structure.format(input_text=input_text)
@@ -249,10 +245,7 @@ def main():
                 "instances": [{"images": np.stack(image_list),
                                "text":  context,}]
             })
-            if chatbot_args.chatbot_type in ["mini_gpt", "llava"]:
-                remove_image_flag = True
-            else:
-                remove_image_flag = False
+            remove_image_flag = chatbot_args.chatbot_type in ["mini_gpt", "llava"]
             begin_time = time.time()
             if not chatbot_args.stream_inference:
                 # directly inference the results
@@ -298,7 +291,7 @@ def main():
                 print("\n", end="")
 
                 context += response + "\n"
-            
+
             if model_args.use_prompt_cache:
                 osp.makedirs(osp.dirname(model_args.prompt_cache_path),
                              exist_ok=True)

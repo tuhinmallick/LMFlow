@@ -90,7 +90,7 @@ def batchlize(examples: list, batch_size: int, random_shuffle: bool):
 
 
 
-def answer_extraction(response, answer_type=None):   #use this funtion to extract answers from generated text
+def answer_extraction(response, answer_type=None):    #use this funtion to extract answers from generated text
 
     """
     Use this funtion to extract answers from generated text
@@ -113,7 +113,7 @@ def answer_extraction(response, answer_type=None):   #use this funtion to extrac
     temp = response
     if answer_type in ("gsm8k", "svamp", "asdiv", "addsub", "singleeq", "multiarith", "math"):
         temp = temp.replace(",", "")
-        temp = [s for s in re.findall(r'-?\d+\.?\d*', temp)]
+        temp = list(re.findall(r'-?\d+\.?\d*', temp))
     elif answer_type in ("aqua", "csqa", "multiple_choice"):
         temp = re.findall(r'A|B|C|D|E', temp)
     elif answer_type in ("strategyqa", "coin_flip"):
@@ -133,15 +133,11 @@ def answer_extraction(response, answer_type=None):   #use this funtion to extrac
         if sttr is not None:
             mid_answer = sttr.group(0)
             mid_answer = mid_answer.split(":")[-1].strip()
-            answer = mid_answer.lower()
+            return mid_answer.lower()
         else:
             pattern = "(yes|Yes|YES|no|No|NO|maybe|Maybe|MAYBE)(\.|\s)"
             sttr = re.search(pattern, temp)
-            if sttr is not None:
-                answer = sttr.group(0)[:-1].lower()
-            else:
-                answer = "N/A"
-        return answer
+            return sttr.group(0)[:-1].lower() if sttr is not None else "N/A"
     elif answer_type == "medmcqa":
         # pattern = "Output: (A|B|C|D)."
         # sttr = re.search(pattern, temp)
@@ -154,13 +150,12 @@ def answer_extraction(response, answer_type=None):   #use this funtion to extrac
         else:
             pattern = "\(*(A|B|C|D|a|b|c|d)\)*(\.|\s)"
             sttr = re.search(pattern, temp)
-            if sttr is not None:
-                if '(' in sttr.group(0):
-                    answer = sttr.group(0)[1].lower()
-                else:
-                    answer = sttr.group(0)[0].lower()
-            else:
+            if sttr is None:
                 answer = "N/A"
+            elif '(' in sttr.group(0):
+                answer = sttr.group(0)[1].lower()
+            else:
+                answer = sttr.group(0)[0].lower()
         return answer
 
     elif answer_type == "usmle":
@@ -175,13 +170,12 @@ def answer_extraction(response, answer_type=None):   #use this funtion to extrac
         else:
             pattern = "\(*(A|B|C|D|a|b|c|d)\)*(\.|\s)"
             sttr = re.search(pattern, temp)
-            if sttr is not None:
-                if '(' in sttr.group(0):
-                    answer = sttr.group(0)[1].lower()
-                else:
-                    answer = sttr.group(0)[0].lower()
-            else:
+            if sttr is None:
                 answer = "N/A"
+            elif '(' in sttr.group(0):
+                answer = sttr.group(0)[1].lower()
+            else:
+                answer = sttr.group(0)[0].lower()
         return answer
     elif answer_type == "text":
         return response

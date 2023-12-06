@@ -39,10 +39,7 @@ def parse_argument(sys_argv):
         help=textwrap.dedent("output dataset path, writes to stdout by default")
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def raw2textonly(fin):
@@ -54,11 +51,10 @@ def raw2textonly(fin):
     Returns:
         a dict with "text-only" format.
     """
-    data_dict = {
+    return {
         "type": "text_only",
-        "instances": [ { "text": line.strip() } for line in fin ],
+        "instances": [{"text": line.strip()} for line in fin],
     }
-    return data_dict
 
 
 def main():

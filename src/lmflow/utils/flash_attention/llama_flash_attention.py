@@ -27,10 +27,9 @@ def forward(
 
     if self.config.pretraining_tp > 1:
         raise ValueError("pretraining_tp > 1 is not supported for flash attention")
-    else:
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+    query_states = self.q_proj(hidden_states)
+    key_states = self.k_proj(hidden_states)
+    value_states = self.v_proj(hidden_states)
 
     query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
     key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -67,7 +66,7 @@ def forward(
         value_states = value_states.to(target_dtype)
 
     dropout = 0.0 if not self.training else self.attention_dropout
-    
+
     # Contains at least one padding token in the sequence
     if attention_mask is not None:
         batch_size = query_states.shape[0]
@@ -90,7 +89,7 @@ def forward(
             causal=self.is_causal,
         )
         attn_output = pad_input(attn_output_unpad, indices_q, batch_size, q_len)
-        
+
     else:
         # below output will have shape (batch_size, seqlen, nheads, headdim)
         attn_output = flash_attn_func(query_states, key_states, value_states, causal=True)

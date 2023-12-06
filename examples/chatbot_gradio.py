@@ -143,7 +143,7 @@ def hist2context(hist):
     context = ""
     for query, response in hist:
         context += prompt_structure.format(input_text=query)
-        if not (response is None):
+        if response is not None:
             context += response
     return context
 
@@ -180,10 +180,14 @@ def predict(input, history=None):
     for response, history in chat_stream(input, history):
         updates = []
         for query, response in history:
-            updates.append(gr.update(visible=True, value="" + query))
-            updates.append(gr.update(visible=True, value="" + response))
+            updates.extend(
+                (
+                    gr.update(visible=True, value=f"{query}"),
+                    gr.update(visible=True, value=f"{response}"),
+                )
+            )
         if len(updates) < MAX_BOXES:
-            updates = updates + [gr.Textbox.update(visible=False)] * (MAX_BOXES - len(updates))
+            updates += [gr.Textbox.update(visible=False)] * (MAX_BOXES - len(updates))
         yield [history] + updates
 
 

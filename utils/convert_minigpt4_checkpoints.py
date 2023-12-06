@@ -6,8 +6,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Convert checkpoint from MiniGPT4")
     parser.add_argument("--model_path", type=str, help="the model path for the to convert checkpoint")
     parser.add_argument("--save_path", default=None, type=str, help="the save path for converted checkpoint")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 
@@ -25,11 +24,15 @@ if __name__ == "__main__":
         new_model[key] = item
     if args.save_path is None:
         end_string = osp.splitext(args.model_path)
-        save_path = osp.dirname(args.model_path) + "/" + \
-                    osp.basename(args.model_path).replace(".pth", "") + \
-                    "-converted" + osp.splitext(args.model_path)[-1]
+        save_path = (
+            (
+                f"{osp.dirname(args.model_path)}/"
+                + osp.basename(args.model_path).replace(".pth", "")
+            )
+            + "-converted"
+        ) + osp.splitext(args.model_path)[-1]
     else:
         save_path = args.save_path
-    print("save_path: {}".format(save_path))
+    print(f"save_path: {save_path}")
 
     torch.save(new_model, save_path)

@@ -78,11 +78,7 @@ class Finetuner(BaseTuner):
 
         # Log on each process the small summary:
         logger.warning(
-            f"Process rank: {finetuner_args.local_rank},"
-            f" device: {finetuner_args.device},"
-            f" n_gpu: {finetuner_args.n_gpu},"
-            f"distributed training: {bool(finetuner_args.local_rank != -1)},"
-            f" 16-bits training: {finetuner_args.fp16}"
+            f"Process rank: {finetuner_args.local_rank}, device: {finetuner_args.device}, n_gpu: {finetuner_args.n_gpu},distributed training: {finetuner_args.local_rank != -1}, 16-bits training: {finetuner_args.fp16}"
         )
         logger.info(f"Training/evaluation parameters {finetuner_args}")
 

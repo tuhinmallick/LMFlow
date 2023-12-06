@@ -44,10 +44,7 @@ def parse_argument(sys_argv):
         help=textwrap.dedent("prompt structure to augment input")
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():

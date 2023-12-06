@@ -144,7 +144,7 @@ class HFDecoderModel(DecoderModel, Tunable):
             "use_auth_token": True if model_args.use_auth_token else None,
             "trust_remote_code": model_args.trust_remote_code,
         }
-        
+
         try:
             if model_args.tokenizer_name:
                 tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
@@ -177,7 +177,7 @@ class HFDecoderModel(DecoderModel, Tunable):
                     " script, save it, and load it from here, using"
                     " --tokenizer_name."
                 )
-            
+
         self.tokenizer = tokenizer  
 
         torch_dtype = (
@@ -204,22 +204,23 @@ class HFDecoderModel(DecoderModel, Tunable):
                 config.update_from_string(model_args.config_overrides)
                 logger.info(f"New config: {config}")
 
-        #position interpolation
         if model_args.do_rope_scaling:
             if "LlamaForCausalLM" in config.architectures:
                 from lmflow.utils.position_interpolation.llama_rope_scaled_monkey_patch import (
                         replace_llama_with_condense,
                 )
                 replace_llama_with_condense(model_args.rope_pi_ratio, model_args.rope_ntk_ratio)
-                
+
         # Whether use flash attention
         if model_args.use_flash_attention:
             supported_gpu_device = None
             for gpu in GPU_SUPPORT_FLASH_ATTENTION:
                 if gpu in torch.cuda.get_device_name():
                     supported_gpu_device = gpu
-            if not any(model_supported in config.architectures
-                       for model_supported in MODELS_SUPPORT_FLASH_ATTENTION):
+            if all(
+                model_supported not in config.architectures
+                for model_supported in MODELS_SUPPORT_FLASH_ATTENTION
+            ):
                 logger.warning(
                     f"Model \"{config.architectures}\" does not support"
                     " flash attention, use normal attention layer instead"
@@ -231,9 +232,9 @@ class HFDecoderModel(DecoderModel, Tunable):
                     " automatically use normal attention layer"
                 )
             else:
-                
+
                 supported_models = GPU_SUPPORT_FLASH_ATTENTION[supported_gpu_device]
-                
+
                 config.use_cache = False
                 if "LlamaForCausalLM" in config.architectures and "LlamaForCausalLM" in supported_models:
                     from lmflow.utils.flash_attention.llama_flash_attention import (
@@ -260,7 +261,7 @@ class HFDecoderModel(DecoderModel, Tunable):
                         f"Model \"{config.architectures}\" with GPU {supported_gpu_device} does not support"
                         " flash attention, use normal attention layer instead"
                     )
-                    
+
         if tune_strategy == 'normal':
             if model_args.model_name_or_path:
                 compute_dtype = torch_dtype
@@ -283,35 +284,38 @@ class HFDecoderModel(DecoderModel, Tunable):
                 try:
                     model = AutoModelForCausalLM.from_pretrained(
                         model_args.model_name_or_path,
-                        from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                        from_tf=".ckpt" in model_args.model_name_or_path,
                         config=config,
-                        quantization_config=quant_config if model_args.use_qlora else None,
+                        quantization_config=quant_config
+                        if model_args.use_qlora
+                        else None,
                         cache_dir=model_args.cache_dir,
                         revision=model_args.model_revision,
                         use_auth_token=True if model_args.use_auth_token else None,
                         torch_dtype=torch_dtype,
                         device_map=device_map,
-                        trust_remote_code = model_args.trust_remote_code,
+                        trust_remote_code=model_args.trust_remote_code,
                     )
-                #for deepspeed zero3, we don't need to specify device_map
                 except:
                     model = AutoModelForCausalLM.from_pretrained(
                         model_args.model_name_or_path,
-                        from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                        from_tf=".ckpt" in model_args.model_name_or_path,
                         config=config,
-                        quantization_config=quant_config if model_args.use_qlora else None,
+                        quantization_config=quant_config
+                        if model_args.use_qlora
+                        else None,
                         cache_dir=model_args.cache_dir,
                         revision=model_args.model_revision,
                         use_auth_token=True if model_args.use_auth_token else None,
                         torch_dtype=torch_dtype,
-                        trust_remote_code = model_args.trust_remote_code,
+                        trust_remote_code=model_args.trust_remote_code,
                     )
                 if model_args.use_qlora:
                     model.gradient_checkpointing_enable()
                     model = prepare_model_for_kbit_training(model)
             else:
                 model = AutoModelForCausalLM.from_config(config)
-                n_params = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters()).values())
+                n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
                 logger.info(f"Training new model from scratch - Total size={n_params/2**20:.2f}M params")
             self.backend_model_full = model
             if model_args.use_lora:
@@ -360,7 +364,6 @@ class HFDecoderModel(DecoderModel, Tunable):
                         self.backend_model, 
                         peft_model_id, 
                     )
-                self.tokenizer.padding_side = "left"
             else:
                 dschf = HfDeepSpeedConfig(ds_config)
                 peft_model_id = model_args.lora_model_path
@@ -411,14 +414,13 @@ class HFDecoderModel(DecoderModel, Tunable):
                     self.backend_model = PeftModel.from_pretrained(
                         self.backend_model, peft_model_id
                     )
-  
-                self.tokenizer.padding_side = "left" #necessary for llama, gpt2 and other decoder models
-                
+
                 if device == "gpu":
                     deepspeed.init_distributed()
                     self.ds_engine = deepspeed.initialize(model=self.backend_model, config_params=ds_config)[0]
                     self.ds_engine.module.eval()
 
+            self.tokenizer.padding_side = "left"
         elif tune_strategy == 'adapter':
             raise NotImplementedError('adapter tune strategy not implemented')
 
@@ -693,27 +695,26 @@ class HFDecoderModel(DecoderModel, Tunable):
                     *args,
                     **kwargs
                 )
+            elif self.device == "gpu":
+                outputs = self.ds_engine.module.generate(
+                    input_ids=inputs,
+                    synced_gpus=True,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    *args,
+                    **kwargs
+                )
+            elif self.device == "cpu":
+                outputs = self.backend_model.generate(
+                    input_ids=inputs,
+                    synced_gpus=True,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    *args,
+                    **kwargs
+                )
             else:
-                if self.device == "gpu":
-                    outputs = self.ds_engine.module.generate(
-                        input_ids=inputs,
-                        synced_gpus=True,
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        *args,
-                        **kwargs
-                    )
-                elif self.device == "cpu":
-                    outputs = self.backend_model.generate(
-                        input_ids=inputs,
-                        synced_gpus=True,
-                        pad_token_id=self.tokenizer.pad_token_id,
-                        *args,
-                        **kwargs
-                    )
-                else:
-                    raise NotImplementedError(
-                        f"device \"{self.device}\" is not supported"
-                    )
+                raise NotImplementedError(
+                    f"device \"{self.device}\" is not supported"
+                )
         return outputs
 
 
@@ -755,16 +756,16 @@ class HFDecoderModel(DecoderModel, Tunable):
 
             self.backend_model_full = AutoModelForCausalLM.from_pretrained(
                 self.model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in self.model_args.model_name_or_path),
+                from_tf=".ckpt" in self.model_args.model_name_or_path,
                 config=config,
                 cache_dir=self.model_args.cache_dir,
                 revision=self.model_args.model_revision,
                 use_auth_token=True if self.model_args.use_auth_token else None,
                 torch_dtype=torch_dtype,
                 device_map=device_map,
-                trust_remote_code = self.model_args.trust_remote_code,
+                trust_remote_code=self.model_args.trust_remote_code,
             )
-        
+
             self.backend_model = PeftModel.from_pretrained(self.backend_model_full, tmpdirname)
 
     def save(self, dir, save_full_model=False, *args, **kwargs):

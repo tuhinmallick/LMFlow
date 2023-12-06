@@ -114,30 +114,25 @@ def is_lmflow_local_benchmarking(dataset_name):
     #     "common_sense_eval_winogrande","common_sense_eval_obqa",\
     #     "common_sense_eval_piqa","common_sense_eval_hellaswag",\
     #     "common_sense_eval_siqa","common_sense_eval_boolq"]
-    if dataset_name in LOCAL_DATSET_GROUP_MAP.keys():
-        dataset_name_collection = LOCAL_DATSET_GROUP_MAP[dataset_name]
-        for dataset_name_exact in dataset_name_collection.split(','):
-            dataset_name_exact = dataset_name_exact.strip()
-            if "common_sense_eval" in dataset_name_exact:
-                dataset_list = dataset_name_exact.split(",")
-                for common_exact_ in dataset_list:
-                    print("Dealing with "+common_exact_.strip())
-                    common_exact_ = common_exact_.strip()
-                    if not os.path.exists(LOCAL_DATSET_MAP[common_exact_]):
-                        os.system("cd data && ./download.sh common_sense_eval && cd -")
-            else:
-                if not os.path.exists(LOCAL_DATSET_MAP[dataset_name_exact]):
-                    print("Checking if dataset "+ str(dataset_name_exact) + " exists")
-                    os.system("cd data && "+'./download.sh '+dataset_name_exact +" && cd -")
-        return True
-    else:
+    if dataset_name not in LOCAL_DATSET_GROUP_MAP.keys():
         return False
+    dataset_name_collection = LOCAL_DATSET_GROUP_MAP[dataset_name]
+    for dataset_name_exact in dataset_name_collection.split(','):
+        dataset_name_exact = dataset_name_exact.strip()
+        if "common_sense_eval" in dataset_name_exact:
+            dataset_list = dataset_name_exact.split(",")
+            for common_exact_ in dataset_list:
+                print(f"Dealing with {common_exact_.strip()}")
+                common_exact_ = common_exact_.strip()
+                if not os.path.exists(LOCAL_DATSET_MAP[common_exact_]):
+                    os.system("cd data && ./download.sh common_sense_eval && cd -")
+        elif not os.path.exists(LOCAL_DATSET_MAP[dataset_name_exact]):
+            print(f"Checking if dataset {str(dataset_name_exact)} exists")
+            os.system("cd data && "+'./download.sh '+dataset_name_exact +" && cd -")
+    return True
 
 def is_lm_evaluation_benchmarking(dataset_name):
-    if dataset_name in LM_EVAL_DATASET_MAP.keys():
-        return True
-    else:
-        return False
+    return dataset_name in LM_EVAL_DATASET_MAP.keys()
 
 def run_lmflow_local_benchmarking(dataset_name,pipeline_name,model_args, \
     pipeline_args, model, local_metric="neg_log_likelihood"):
@@ -187,10 +182,20 @@ def run_lm_evaluation_benchmarking(dataset_name,model_name):
     # "--tasks", "openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq"
     # "--device", "cuda:0"])
     dataset = LM_EVAL_DATASET_MAP[dataset_name]
-    subprocess.run(["python3", "utils/lm_evaluator.py", "--model", "hf-causal-experimental", 
-    "--model_args", "pretrained="+model_name,
-    "--tasks", dataset,
-    "--device", "cuda:0"])
+    subprocess.run(
+        [
+            "python3",
+            "utils/lm_evaluator.py",
+            "--model",
+            "hf-causal-experimental",
+            "--model_args",
+            f"pretrained={model_name}",
+            "--tasks",
+            dataset,
+            "--device",
+            "cuda:0",
+        ]
+    )
 
 def main():
     # Parses arguments (self-defined for our evaluation platform)

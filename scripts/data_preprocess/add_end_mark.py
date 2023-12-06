@@ -44,10 +44,7 @@ def parse_argument(sys_argv):
         help=textwrap.dedent("end mark that append to the end of output")
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():
@@ -63,13 +60,13 @@ def main():
         "text2text": "output",
     }
     data_dict_type = data_dict["type"]
-    if not data_dict_type in output_field_map:
+    if data_dict_type not in output_field_map:
         raise NotImplementedError(
             "only support text_only or text2text dataset"
         )
 
     output_field = output_field_map[data_dict_type]
-    
+
     num_instances = len(data_dict["instances"])
     for i in range(num_instances):
         data_dict["instances"][i][output_field] += args.end_mark
