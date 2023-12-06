@@ -121,7 +121,8 @@ inv_freq = 1.0 / (
     base ** (torch.arange(0, dims_per_head, 2).float() / dims_per_head)
 )
 
-if not (LORA_MODEL is None):
+new_state_dict = {}
+if LORA_MODEL is not None:
     lora_model = PeftModel.from_pretrained(
         base_model,
         LORA_MODEL,
@@ -144,28 +145,17 @@ if not (LORA_MODEL is None):
 
 
 
-    new_state_dict = {}
     for k, v in lora_model_sd.items():
         new_k = translate_state_dict_key(k)
         if new_k is not None:
-            if "wq" in new_k or "wk" in new_k:
-                new_state_dict[new_k] = unpermute(v)
-            else:
-                new_state_dict[new_k] = v
+            new_state_dict[new_k] = unpermute(v) if "wq" in new_k or "wk" in new_k else v
 else:
     base_model.eval()
-    new_state_dict = {}
     state_dicts = base_model.state_dict()
     for k, v in state_dicts.items():
         new_k = translate_state_dict_key(k)
         if new_k is not None:
-            if "wq" in new_k or "wk" in new_k:
-                new_state_dict[new_k] = unpermute(v)
-            else:
-                new_state_dict[new_k] = v
-
-
-
+            new_state_dict[new_k] = unpermute(v) if "wq" in new_k or "wk" in new_k else v
 os.makedirs("./ckpt", exist_ok=True)
 
 torch.save(new_state_dict, "./ckpt/consolidated.00.pth")

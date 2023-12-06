@@ -35,10 +35,7 @@ def parse_argument(sys_argv):
         help="input dataset path, reads from stdin by default"
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():

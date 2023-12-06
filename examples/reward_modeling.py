@@ -101,19 +101,18 @@ print("Training set: ", len(train_dataset), " Eval set: ", len(eval_dataset))
 
 ## Define the trainer
 def compute_metrics(eval_pred):
-    result = {}
     pos_predictions_scores = eval_pred.predictions[0]
     neg_predictions_scores = eval_pred.predictions[1]
-    # We assume that the first sample is preferred by default in groundtruth
-    result['accuracy'] = np.sum(pos_predictions_scores >= neg_predictions_scores) / len(pos_predictions_scores)
-    return result
+    return {
+        'accuracy': np.sum(pos_predictions_scores >= neg_predictions_scores)
+        / len(pos_predictions_scores)
+    }
     
 class DataCollatorReward:
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
 
     def __call__(self, data):
-        batch = {}
         data_pos = []
         data_neg = []
         for sample in data:
@@ -121,12 +120,13 @@ class DataCollatorReward:
             data_neg.append({"input_ids": sample['rejected_input_ids'], "attention_mask": sample["rejected_attention_mask"]})
         batch_pos = self.tokenizer.pad(data_pos, padding=True, return_tensors="pt")
         batch_neg = self.tokenizer.pad(data_neg, padding=True, return_tensors="pt")
-        batch['chosen_input_ids'] = batch_pos['input_ids']
-        batch['rejected_input_ids'] = batch_neg['input_ids']
-        batch['chosen_attention_mask'] = batch_pos['attention_mask']
-        batch['rejected_attention_mask'] = batch_neg['attention_mask']
-        batch['return_loss'] = True
-        return batch
+        return {
+            'chosen_input_ids': batch_pos['input_ids'],
+            'rejected_input_ids': batch_neg['input_ids'],
+            'chosen_attention_mask': batch_pos['attention_mask'],
+            'rejected_attention_mask': batch_neg['attention_mask'],
+            'return_loss': True,
+        }
 
 
 class RMTrainer(Trainer):

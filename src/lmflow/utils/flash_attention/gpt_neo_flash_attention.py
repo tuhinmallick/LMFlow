@@ -69,7 +69,7 @@ def forward(
     assert head_mask is None, "head_mask is not supported"
     assert not output_attentions, "output_attentions is not supported"
     assert not use_cache, "use_cache is not supported"
-    
+
     query = self.q_proj(hidden_states)
     key = self.k_proj(hidden_states)
     value = self.v_proj(hidden_states)
@@ -77,13 +77,13 @@ def forward(
     query = self._split_heads(query, self.num_heads, self.head_dim)
     key = self._split_heads(key, self.num_heads, self.head_dim)
     value = self._split_heads(value, self.num_heads, self.head_dim)
-    
+
     if layer_past is not None:
         past_key = layer_past[0]
         past_value = layer_past[1]
         key = torch.cat((past_key, key), dim=-2)
         value = torch.cat((past_value, value), dim=-2)
-        
+
     present = None
     attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
     new_shape = attn_output.size()[:-2] + (self.num_heads * self.head_dim,)
@@ -91,9 +91,7 @@ def forward(
     attn_output = self.out_proj(attn_output)
     attn_output = self.resid_dropout(attn_output)
 
-    outputs = (attn_output, present)
-
-    return outputs  # a, present, (attentions)
+    return attn_output, present
         
 def replace_gpt_neo_attn_with_flash_attn():
     transformers.models.gpt_neo.modeling_gpt_neo.GPTNeoSelfAttention._attn = _attn

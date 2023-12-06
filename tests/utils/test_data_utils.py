@@ -68,9 +68,10 @@ class DataUtilsTest(unittest.TestCase):
     def test_batchlize(self):
         file_name = "data/example_dataset/test/test_13.json"
         inputs, outputs, datasize = load_data(file_name=file_name)
-        dataset = []
-        for idx in range(len(outputs)):
-            dataset.append({"input":inputs[idx], "output":outputs[idx], "input_idx":idx})
+        dataset = [
+            {"input": inputs[idx], "output": outputs[idx], "input_idx": idx}
+            for idx in range(len(outputs))
+        ]
         # TODO: add test for random shuffle case
         dataloader = batchlize(dataset, 4, random_shuffle= False)
         self.assertEqual(len(dataloader),  13 // 4 + 1)

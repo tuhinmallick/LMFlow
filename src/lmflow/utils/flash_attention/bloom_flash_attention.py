@@ -39,14 +39,10 @@ def forward(
             key_layer = torch.cat((past_key, key_layer), dim=2)
             value_layer = torch.cat((past_value, value_layer), dim=1)
 
-        if use_cache is True:
-            present = (key_layer, value_layer)
-        else:
-            present = None
-
+        present = (key_layer, value_layer) if use_cache else None
         reshaped_alibi = rearrange(alibi, '(b h) one s-> b h one s', h = self.num_heads)
         reshaped_alibi = reshaped_alibi * self.beta
-        
+
         attention_mask = (1.0 - attention_mask)
         attention_mask = attention_mask[:, None, None, :].bool()
         reshaped_alibi_masked = reshaped_alibi.masked_fill(attention_mask, -1e9)
@@ -62,7 +58,7 @@ def forward(
             )
 
         output = rearrange(output, 'b s h d -> (b h) s d')
-        
+
         # change view [batch_size, num_heads, q_length, head_dim]
         context_layer = self._merge_heads(output)
 
@@ -79,7 +75,7 @@ def forward(
             output_tensor = self.dense(context_layer)
 
         output_tensor = dropout_add(output_tensor, residual, self.hidden_dropout, self.training)
-        
+
         outputs = (output_tensor, present)
         if output_attentions:
             outputs += (context_layer,)

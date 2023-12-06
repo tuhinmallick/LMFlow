@@ -86,20 +86,18 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
                     load_in_8bit=True,
                     device_map="auto",
                     low_cpu_mem_usage=True)
-            else:
-                if not is_deepspeed_zero3_enabled:
-                    kwargs = dict(device_map="auto",
-                            torch_dtype=torch.float16)
+            elif not is_deepspeed_zero3_enabled:
+                kwargs = dict(device_map="auto",
+                        torch_dtype=torch.float16)
             language_model = AutoModelForCausalLM.from_pretrained(
                 language_model_name_or_path, **kwargs)
             config.text_config = language_model.config
+        elif config.use_decoder_only_language_model:
+            language_model = AutoModelForCausalLM.from_config(
+                config.text_config, **kwargs)
         else:
-            if config.use_decoder_only_language_model:
-                language_model = AutoModelForCausalLM.from_config(
-                    config.text_config, **kwargs)
-            else:
-                language_model = AutoModelForSeq2SeqLM.from_config(
-                    config.text_config, **kwargs)
+            language_model = AutoModelForSeq2SeqLM.from_config(
+                config.text_config, **kwargs)
         # Update _tied_weights_keys using the base model used.
         if getattr(language_model, "_tied_weights_keys", None) is not None:
             self._tied_weights_keys = [f"language_model.{k}" for k in language_model._tied_weights_keys]
@@ -114,7 +112,7 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
                 self.vision_model.hidden_size,
                 self.language_model.config.hidden_size)
         if image_encoder_name_or_path is None and \
-           language_model_name_or_path is None:
+               language_model_name_or_path is None:
             self.post_init()
         # for deepspeed
         self.hidden_size = self.language_model.config.hidden_size
@@ -237,64 +235,59 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
         if pixel_values is None and images is not None:
             pixel_values = images
 
-        if not one_sample_multiple_images:
-            batch_size = pixel_values.shape[0]
-        else:
-            batch_size = 1
+        batch_size = pixel_values.shape[0] if not one_sample_multiple_images else 1
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if not self.custom_vision_model:
-            # do the processing as blip2 and mini gpt-4;
-            if past_key_values is not None and input_ids.shape[1] == 1:
-                # no need to recompute the key values
-                attention_mask = torch.ones((
-                    attention_mask.shape[0],
-                    past_key_values[-1][-1].shape[-2] + 1),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device)
-            else:
-                image_embeds = self.vision_model(
-                    pixel_values, return_dict=True).last_hidden_state
-                image_attention_mask = torch.ones(
-                    image_embeds.size()[:-1],
-                    dtype=torch.long,
-                    device=image_embeds.device)
-                if self.with_qformer:
-                    query_tokens = self.query_tokens.expand(
-                        image_embeds.shape[0], -1, -1)
-                    query_outputs = self.qformer(
-                        query_embeds=query_tokens,
-                        encoder_hidden_states=image_embeds,
-                        encoder_attention_mask=image_attention_mask,
-                        return_dict=True,
-                    )
-                else:
-                    query_outputs = image_embeds
-                query_output = query_outputs.last_hidden_state
-                language_model_inputs = self.language_projection(query_output)
-                inputs_embeds, attention_mask = \
-                    self.processor_image_token_in_minigpt4(
-                        input_ids,
-                        language_model_inputs,
-                        attention_mask,
-                        image_token_indexes,
-                        pixel_values,
-                        batch_size)
-                input_ids = None
-        else:
+        if self.custom_vision_model:
             # do the processing in the vision model
             # language is the causallm model.
             # so use language model.model to do the embed_tokens
             input_ids, attention_mask, past_key_values, inputs_embeds, labels = \
-                self.vision_model.prepare_inputs_labels_for_multimodal(
+                    self.vision_model.prepare_inputs_labels_for_multimodal(
                     input_ids, attention_mask,
                     past_key_values, labels,
                     pixel_values,
                     self.language_projection,
                     self.language_model.model)
+        elif past_key_values is not None and input_ids.shape[1] == 1:
+            # no need to recompute the key values
+            attention_mask = torch.ones((
+                attention_mask.shape[0],
+                past_key_values[-1][-1].shape[-2] + 1),
+                dtype=attention_mask.dtype,
+                device=attention_mask.device)
+        else:
+            image_embeds = self.vision_model(
+                pixel_values, return_dict=True).last_hidden_state
+            image_attention_mask = torch.ones(
+                image_embeds.size()[:-1],
+                dtype=torch.long,
+                device=image_embeds.device)
+            if self.with_qformer:
+                query_tokens = self.query_tokens.expand(
+                    image_embeds.shape[0], -1, -1)
+                query_outputs = self.qformer(
+                    query_embeds=query_tokens,
+                    encoder_hidden_states=image_embeds,
+                    encoder_attention_mask=image_attention_mask,
+                    return_dict=True,
+                )
+            else:
+                query_outputs = image_embeds
+            query_output = query_outputs.last_hidden_state
+            language_model_inputs = self.language_projection(query_output)
+            inputs_embeds, attention_mask = \
+                    self.processor_image_token_in_minigpt4(
+                    input_ids,
+                    language_model_inputs,
+                    attention_mask,
+                    image_token_indexes,
+                    pixel_values,
+                    batch_size)
+            input_ids = None
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         # TODO check how to generate the labels with image embeddings
         # print(input_ids, attention_mask)
@@ -373,13 +366,18 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
 
         for idx, image_token_index in enumerate(image_token_indexes):
             end_index += image_token_index
-            inputs_embeds_with_images.append(
-                inputs_embeds[:, start_index:end_index])
-            inputs_embeds_with_images.append(language_model_inputs[idx][None])
-            attention_mask_with_images.append(
-                attention_mask[:, start_index:end_index])
-            attention_mask_with_images.append(
-                language_attention_mask[idx][None])
+            inputs_embeds_with_images.extend(
+                (
+                    inputs_embeds[:, start_index:end_index],
+                    language_model_inputs[idx][None],
+                )
+            )
+            attention_mask_with_images.extend(
+                (
+                    attention_mask[:, start_index:end_index],
+                    language_attention_mask[idx][None],
+                )
+            )
             start_index = end_index
 
         inputs_embeds_with_images.append(
@@ -428,10 +426,7 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
         if pixel_values is None and images is not None:
             pixel_values = images
 
-        if not one_sample_multiple_images:
-            batch_size = pixel_values.shape[0]
-        else:
-            batch_size = 1
+        batch_size = pixel_values.shape[0] if not one_sample_multiple_images else 1
         if not self.custom_vision_model:
             # do the processing as blip2 and mini gpt-4;
             image_embeds = self.vision_model(
@@ -454,7 +449,7 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
             query_output = query_outputs.last_hidden_state
             language_model_inputs = self.language_projection(query_output)
             inputs_embeds, attention_mask = \
-                self.processor_image_token_in_minigpt4(
+                    self.processor_image_token_in_minigpt4(
                     input_ids,
                     language_model_inputs,
                     attention_mask,
@@ -470,7 +465,7 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
                 # the batch dim is missing;
                 pixel_values = pixel_values[None]
             input_ids, attention_mask, past_key_values, inputs_embeds, labels = \
-                self.vision_model.prepare_inputs_labels_for_multimodal(
+                    self.vision_model.prepare_inputs_labels_for_multimodal(
                     input_ids, attention_mask,
                     None, None,
                     pixel_values,
@@ -482,9 +477,8 @@ class CustomAutoVision2SeqModel(Blip2ForConditionalGeneration, BaseModel):
             device=self.language_model.lm_head.weight.device)
         inputs_embeds = inputs_embeds.to(
             self.language_model.lm_head.weight.dtype)
-        outputs = self.language_model.generate(
+        return self.language_model.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             **generate_kwargs,
         )
-        return outputs

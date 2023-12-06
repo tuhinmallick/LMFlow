@@ -26,7 +26,7 @@ def parse_argument(sys_argv):
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter)
-    
+
     parser.add_argument(
         "--dataset_path", type=str,
         default=None,
@@ -47,10 +47,7 @@ def parse_argument(sys_argv):
         )
     )
 
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():

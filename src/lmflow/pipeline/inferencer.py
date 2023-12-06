@@ -101,13 +101,9 @@ class Inferencer(BasePipeline):
             inputs = dataset.to_list()
 
         dataset_size = len(inputs)
-        dataset_buf = []
-        for idx in range(dataset_size):
-            dataset_buf.append({
-                "input": inputs[idx],
-                "input_idx": idx
-            })
-
+        dataset_buf = [
+            {"input": inputs[idx], "input_idx": idx} for idx in range(dataset_size)
+        ]
         dataloader = batchlize(
             dataset_buf,
             batch_size=1,
@@ -143,8 +139,8 @@ class Inferencer(BasePipeline):
         """
         if dataset.get_type() not in supported_dataset_type:
             raise NotImplementedError(
-                'input dataset should have type {}'.format(
-                                        supported_dataset_type))
+                f'input dataset should have type {supported_dataset_type}'
+            )
         dataloader, data_size = self.create_dataloader(dataset)
 
         # The output dataset
@@ -154,7 +150,7 @@ class Inferencer(BasePipeline):
             ]
         }
 
-        for batch_index, batch in enumerate(dataloader):
+        for batch in dataloader:
             current_batch = batch[0]        # batch size is 1
             if isinstance(current_batch['input'], str):
                 input = prompt_structure.format(input=current_batch['input'])
@@ -173,11 +169,10 @@ class Inferencer(BasePipeline):
                 else:
                     raise NotImplementedError
                 input['text'] = input['text'].split(image_split_flag)
-                # TODO remove this code by update the tokenizer
-                input_ids = []
                 attention_mask = []
                 image_token_indexes = []
                 temp_input = copy.deepcopy(input)
+                input_ids = []
                 for idx in range(len(input['text'])):
                     temp_input['text'] = input['text'][idx]
                     temp_inputs = model.encode(
@@ -207,19 +202,18 @@ class Inferencer(BasePipeline):
                 inputs = temp_inputs
                 inputs["input_ids"] = torch.cat(input_ids, dim=1)
                 inputs["attention_mask"] = torch.cat(attention_mask, dim=1)
+            elif self.inferencer_args.device == "gpu":
+                inputs = model.encode(
+                    input, return_tensors="pt"
+                ).to(device=self.local_rank)
+            elif self.inferencer_args.device == "cpu":
+                inputs = model.encode(
+                    input, return_tensors="pt"
+                ).to(device='cpu')
             else:
-                if self.inferencer_args.device == "gpu":
-                    inputs = model.encode(
-                        input, return_tensors="pt"
-                    ).to(device=self.local_rank)
-                elif self.inferencer_args.device == "cpu":
-                    inputs = model.encode(
-                        input, return_tensors="pt"
-                    ).to(device='cpu')
-                else:
-                    raise NotImplementedError(
-                        f"device \"{self.inferencer_args.device}\" is not supported"
-                    )
+                raise NotImplementedError(
+                    f"device \"{self.inferencer_args.device}\" is not supported"
+                )
             if remove_image_flag:
                 inputs["image_token_indexes"] = image_token_indexes
                 inputs["one_sample_multiple_images"] = True
@@ -236,15 +230,13 @@ class Inferencer(BasePipeline):
             if self.model_args.arch_type != "vision_encoder_decoder":
                 text_out = model.decode(outputs[0], skip_special_tokens=True)
                 prompt_length = len(model.decode(inputs[0], skip_special_tokens=True,))
-                text_out = text_out[prompt_length:]
             else:
                 # to avoid redundant/missing leading space problem, we use a
                 # part of the input text
                 input_text = inputs['input_ids'][0][-1:]
                 text_out = model.decode(torch.cat([input_text, outputs[0]]), skip_special_tokens=True)
                 prompt_length = len(model.decode(input_text, skip_special_tokens=True,))
-                text_out = text_out[prompt_length:]
-
+            text_out = text_out[prompt_length:]
             output_dict["instances"].append({ "text": text_out })
 
         output_dataset = Dataset(DatasetArguments(dataset_path = None))
@@ -264,8 +256,8 @@ class Inferencer(BasePipeline):
         remove_image_flag: bool=False,
     ):
         response = ""
-        history = []
         if "ChatGLMModel" in self.config.architectures:
+            history = []
             for response, history in model.get_backend_model().stream_chat(model.get_tokenizer(), context, history=history):
                 response = rstrip_partial_utf8(response)
                 yield response, False
@@ -391,14 +383,15 @@ class SpeculativeInferencer(Inferencer):
     def predict_next_token(model: HFDecoderModel, input_ids: torch.Tensor, num_new_tokens: int = 1):
         """Predict the next token given the input_ids.
         """
-        output = model.inference(input_ids, 
-                                 use_accelerator=True, 
-                                 max_new_tokens=num_new_tokens,
-                                 return_dict_in_generate=True,
-                                 output_scores=True,
-                                 do_sample=True,
-                                 num_beams=1)
-        return output
+        return model.inference(
+            input_ids,
+            use_accelerator=True,
+            max_new_tokens=num_new_tokens,
+            return_dict_in_generate=True,
+            output_scores=True,
+            do_sample=True,
+            num_beams=1,
+        )
     
     
     def autoregressive_sampling(self, 
@@ -486,19 +479,19 @@ class SpeculativeInferencer(Inferencer):
             """
             len_input_ids= input_ids.shape[1]
             logger.debug(f"len of input_ids: {len_input_ids}")
-            
+
             # STEP 1: Sample γ guesses x1, ..., xγ from Mq (draft model) autoregressively
             output_draft = self.autoregressive_sampling(input_ids=input_ids, model=draft_model, num_new_tokens=gamma)
             logger.debug(f"draft result: {output_draft['sequence']}")
             logger.debug(f"draft result decoded: {draft_model.decode(output_draft['sequence'][0])}")
-            
-            
+
+
             # STEP 2: Run Mp (target model) in parallel
             # generate sequences [prefix, x1, x2, ..., xγ]
             output = model.get_backend_model()(input_ids=output_draft['sequence'], return_dict=True)
             logger.debug(f'shape of output: {output.logits.shape}')
-            
-            
+
+
             # STEP 3: Determine the number of accepted guesses n
             accepted = [False] * gamma
             for i in range(gamma):
@@ -511,7 +504,7 @@ class SpeculativeInferencer(Inferencer):
                     break
                 else:
                     accepted[i] = True
-                
+
             logger.debug(f"Speculative Sampling: Accepted: {sum(accepted)}/{gamma}")
 
 
@@ -530,12 +523,12 @@ class SpeculativeInferencer(Inferencer):
             final_sequence = torch.concat([output_draft['sequence'][:,:len_input_ids+sum(accepted)], token_from_target_model], dim=1)
 
             return final_sequence
-        
+
 
         num_generated_new_tokens = 0
         len_raw_input = len(inputs[0])
         while num_generated_new_tokens < max_new_tokens:
-            logger.debug(f'===== New iter =====')
+            logger.debug('===== New iter =====')
             logger.debug(f"input_ids: {inputs}")
             sampling_result = speculative_sampling(input_ids=inputs,
                                                    model=model,
@@ -545,8 +538,8 @@ class SpeculativeInferencer(Inferencer):
             logger.debug(f'sampling result decoded: {model.decode(sampling_result[0])}')
             num_generated_new_tokens += len(sampling_result[0]) - len(inputs[0])
             inputs = sampling_result
-        
-        
+
+
         # if, say, num_generated_new_tokens = 19, and the model accept 3 
         # tokens, the actual generated tokens would be 22.
         return model.decode(inputs[0,:len_raw_input+max_new_tokens])

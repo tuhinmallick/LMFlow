@@ -14,15 +14,13 @@ class MultiChoice:
 
     # Simple wildcard support (linux filename patterns)
     def __contains__(self, values):
-        for value in values.split(","):
-            if len(fnmatch.filter(self.choices, value)) == 0:
-                return False
-
-        return True
+        return all(
+            len(fnmatch.filter(self.choices, value)) != 0
+            for value in values.split(",")
+        )
 
     def __iter__(self):
-        for choice in self.choices:
-            yield choice
+        yield from self.choices
 
 
 def parse_args():

@@ -10,14 +10,13 @@ from lmflow.models.hf_encoder_decoder_model import HFEncoderDecoderModel
 class AutoModel:
 
     @classmethod
-    def get_model(self, model_args, *args, **kwargs):
+    def get_model(cls, model_args, *args, **kwargs):
         arch_type = model_args.arch_type
         if arch_type == "decoder_only":
             return HFDecoderModel(model_args, *args, **kwargs)
         elif arch_type == "text_regression":
             return TextRegressionModel(model_args, *args, **kwargs)
-        elif arch_type == "encoder_decoder" or \
-                arch_type == "vision_encoder_decoder":
+        elif arch_type in ["encoder_decoder", "vision_encoder_decoder"]:
             return HFEncoderDecoderModel(model_args, *args, **kwargs)
         else:
             raise NotImplementedError(

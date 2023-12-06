@@ -84,10 +84,7 @@ class CLIPVisionTower(nn.Module):
 
     @property
     def config(self):
-        if self.is_loaded:
-            return self.vision_tower.config
-        else:
-            return self.cfg_only
+        return self.vision_tower.config if self.is_loaded else self.cfg_only
 
     @property
     def hidden_size(self):
@@ -111,17 +108,18 @@ class CLIPVisionTower(nn.Module):
         # commonly used in model.generate (past_key_values is not None)
         # to avoid forward the image multiple time
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
-            if (past_key_values is not None and
-                vision_tower is not None and
-                images is not None and
-                input_ids.shape[1] == 1):
+            if (
+                past_key_values is not None
+                and vision_tower is not None
+                and images is not None
+            ):
                 attention_mask = torch.ones((
                     attention_mask.shape[0],
                     past_key_values[-1][-1].shape[-2] + 1),
                     dtype=attention_mask.dtype, device=attention_mask.device)
             return input_ids, attention_mask, past_key_values, None, labels
         if type(images) is list or images.ndim == 5:
-            concat_images = torch.cat([image for image in images], dim=0)
+            concat_images = torch.cat(list(images), dim=0)
             image_features = self.encode_images(concat_images, language_projection)
             split_sizes = [image.shape[0] for image in images]
             image_features = torch.split(image_features, split_sizes, dim=0)
@@ -150,13 +148,25 @@ class CLIPVisionTower(nn.Module):
             while image_token_indices.numel() > 0:
                 cur_image_features = image_features[cur_image_idx]
                 image_token_start = image_token_indices[0]
-                # print("image token_start", image_token_start,
-                    #   "curr_input_ids", cur_input_ids.shape)
                 if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
-                    cur_new_input_embeds.append(language_model.embed_tokens(cur_input_ids[:image_token_start-1]).detach())
-                    cur_new_input_embeds.append(language_model.embed_tokens(cur_input_ids[image_token_start-1:image_token_start]))
-                    cur_new_input_embeds.append(cur_image_features)
-                    cur_new_input_embeds.append(language_model.embed_tokens(cur_input_ids[image_token_start+1:image_token_start+2]))
+                    cur_new_input_embeds.extend(
+                        (
+                            language_model.embed_tokens(
+                                cur_input_ids[: image_token_start - 1]
+                            ).detach(),
+                            language_model.embed_tokens(
+                                cur_input_ids[
+                                    image_token_start - 1 : image_token_start
+                                ]
+                            ),
+                            cur_image_features,
+                            language_model.embed_tokens(
+                                cur_input_ids[
+                                    image_token_start + 1 : image_token_start + 2
+                                ]
+                            ),
+                        )
+                    )
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
                         cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=labels.device, dtype=labels.dtype))
@@ -164,8 +174,14 @@ class CLIPVisionTower(nn.Module):
                         cur_labels = cur_labels[image_token_start+2:]
                 else:
                     cur_input_ids = cur_input_ids.to(device=language_model.device)
-                    cur_new_input_embeds.append(language_model.embed_tokens(cur_input_ids[:image_token_start]))
-                    cur_new_input_embeds.append(cur_image_features)
+                    cur_new_input_embeds.extend(
+                        (
+                            language_model.embed_tokens(
+                                cur_input_ids[:image_token_start]
+                            ),
+                            cur_image_features,
+                        )
+                    )
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
                         cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=labels.device, dtype=labels.dtype))
@@ -224,4 +240,4 @@ class CLIPVisionTower(nn.Module):
                 attention_mask = torch.cat((new_attn_mask_pad_left, attention_mask), dim=1)
                 assert attention_mask.shape == new_input_embeds.shape[:2]
         return None, attention_mask, past_key_values, \
-                new_input_embeds, new_labels
+                    new_input_embeds, new_labels

@@ -62,32 +62,27 @@ def parse_argument(sys_argv):
         "--k", type=int, default=10,
         help=textwrap.dedent("the train dataset will be divide into k folds")
     )
-    # Parses from commandline
-    args = parser.parse_args(sys_argv[1:])
-
-    return args
+    return parser.parse_args(sys_argv[1:])
 
 
 def main():
     args = parse_argument(sys.argv)
 
-    # concat 
-    if args.merge_from_path is not None:
-        for i in range(0, len(args.merge_from_path)):
-            with open(args.merge_from_path[i], "r") as fin:
-                extra_data_dict = json.load(fin)
-            if i == 0:
-                data_dict = extra_data_dict
-            else:
-                if data_dict["type"] != extra_data_dict["type"]:
-                    raise ValueError(
-                        'two dataset have different types:'
-                        f' input dataset: "{data_dict["type"]}";'
-                        f' merge from dataset: "{extra_data_dict["type"]}"'
-                    )
-                data_dict["instances"].extend(extra_data_dict["instances"])
-    else:
+    if args.merge_from_path is None:
         raise ValueError("No merge files specified")
+    for i in range(0, len(args.merge_from_path)):
+        with open(args.merge_from_path[i], "r") as fin:
+            extra_data_dict = json.load(fin)
+        if i == 0:
+            data_dict = extra_data_dict
+        elif data_dict["type"] == extra_data_dict["type"]:
+            data_dict["instances"].extend(extra_data_dict["instances"])
+        else:
+            raise ValueError(
+                'two dataset have different types:'
+                f' input dataset: "{data_dict["type"]}";'
+                f' merge from dataset: "{extra_data_dict["type"]}"'
+            )
     del extra_data_dict
     gc.collect()
     print('finish concat')
@@ -128,19 +123,19 @@ def main():
     if not os.path.exists(train_save_path):
         os.makedirs(train_save_path)
     for i in range(args.k):
-        with open(train_save_path+"/train_"+str(i)+".json", 'w') as f:
+        with open(f"{train_save_path}/train_{str(i)}.json", 'w') as f:
             json.dump(split_data[i], f,  indent=4, ensure_ascii=False)
 
     eval_save_path=os.path.join(args.output_path,"eval")
     if not os.path.exists(eval_save_path):
         os.makedirs(eval_save_path)
-    with open(eval_save_path+'/eval.json','w') as f:
+    with open(f'{eval_save_path}/eval.json', 'w') as f:
         json.dump(eval_data_dict,f,indent=4,ensure_ascii=False)
 
     test_save_path=os.path.join(args.output_path,"test")
     if not os.path.exists(test_save_path):
         os.makedirs(test_save_path)
-    with open(test_save_path+'/test.json','w') as f:
+    with open(f'{test_save_path}/test.json', 'w') as f:
         json.dump(test_data_dict,f,indent=4,ensure_ascii=False)
 
 

@@ -111,7 +111,9 @@ def preprocess_multimodal_llava(sources, data_args):
                 sentence['value'] = sentence['value'].strip()
                 if "mmtag" in conversation_lib.default_conversation.version:
                     sentence['value'] = sentence['value'].replace(
-                        DEFAULT_IMAGE_TOKEN, '<Image>' + DEFAULT_IMAGE_TOKEN + '</Image>')
+                        DEFAULT_IMAGE_TOKEN,
+                        f'<Image>{DEFAULT_IMAGE_TOKEN}</Image>',
+                    )
             replace_token = DEFAULT_IMAGE_TOKEN
             if data_args.use_image_start_end:
                 replace_token = DEFAULT_IM_START_TOKEN + \
@@ -132,7 +134,11 @@ def tokenizer_image_token(prompt,
 
     input_ids = []
     offset = 0
-    if len(prompt_chunks) > 0 and len(prompt_chunks[0]) > 0 and prompt_chunks[0][0] == tokenizer.bos_token_id:
+    if (
+        prompt_chunks
+        and len(prompt_chunks[0]) > 0
+        and prompt_chunks[0][0] == tokenizer.bos_token_id
+    ):
         offset = 1
         input_ids.append(prompt_chunks[0][0])
 
